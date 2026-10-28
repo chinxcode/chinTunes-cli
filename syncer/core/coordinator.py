@@ -3,14 +3,14 @@
 import os
 import time
 import subprocess
-from typing import Dict, Any, List, Optional, Callable
+import urllib.request
 import threading
+from typing import List, Optional
 
 import yt_dlp
 
-from syncer.core.models import TrackMetadata, LyricsData, SyncProcessResult, CollectionResult, clean_artist_name
+from syncer.core.models import TrackMetadata, LyricsData, SyncProcessResult, clean_artist_name
 from syncer.core.config import ConfigManager
-from syncer.core.history import HistoryManager
 from syncer.providers.registry import ProviderRegistry
 from syncer.tagging.lyrics import LyricsEngine
 from syncer.tagging.tagger import MetadataTagger
@@ -75,7 +75,7 @@ class SyncCoordinator:
         jio_matched_id = None
         matched_artist = track.artist
 
-        # 1. High-Fidelity JioSaavn 320k Direct Stream
+        # 1. High-Fidelity JioSaavn 320k Direct Stream (Near-0% CPU, direct HTTP stream)
         if cfg.get("prefer_jiosaavn_320k", True) and not self._stop_event.is_set():
             cdn_url = track.cdn_url
             if not cdn_url and source_used in ("youtube", "spotify"):
@@ -91,47 +91,87 @@ class SyncCoordinator:
                     track.duration = track.duration or matches[0].duration
 
             if cdn_url and not self._stop_event.is_set():
-                # Prepare temporary destination
                 track.artist = clean_artist_name(matched_artist)
-                final_filename = f"{track.safe_filename_base}.{audio_format}"
-                final_file = os.path.join(download_dir, final_filename)
+                normalize_needed = cfg.get("normalize_loudness", False)
+                fast_copy = cfg.get("fast_stream_copy", True)
 
-                ffmpeg_args = [
-                    "ffmpeg", "-y", "-hide_banner", "-loglevel", "quiet",
-                    "-reconnect", "1", "-reconnect_streamed", "1", "-reconnect_delay_max", "5",
-                    "-i", cdn_url
-                ]
-                if cfg.get("normalize_loudness", True):
-                    ffmpeg_args.extend(["-af", "loudnorm=I=-16:LRA=11:TP=-1.5"])
-
-                if audio_format == "mp3":
-                    bitrate = "320k" if audio_quality in ("320k", "0") else "256k"
-                    ffmpeg_args.extend(["-c:a", "libmp3lame", "-b:a", bitrate, final_file])
+                # If user selected m4a/aac or if fast_stream_copy without loudnorm is enabled
+                if (audio_format in ("m4a", "mp4", "aac") or (fast_copy and not normalize_needed and audio_format == "m4a")) and not normalize_needed:
+                    target_ext = "m4a"
+                    final_filename = f"{track.safe_filename_base}.{target_ext}"
+                    final_file = os.path.join(download_dir, final_filename)
+                    try:
+                        req = urllib.request.Request(cdn_url, headers={"User-Agent": "Mozilla/5.0"})
+                        with urllib.request.urlopen(req, timeout=30) as resp, open(final_file, "wb") as out_f:
+                            while True:
+                                if self._stop_event.is_set():
+                                    break
+                                chunk = resp.read(65536)
+                                if not chunk:
+                                    break
+                                out_f.write(chunk)
+                        if os.path.exists(final_file) and os.path.getsize(final_file) > 10000:
+                            audio_downloaded = True
+                            source_used = "jiosaavn_320k"
+                            audio_format = target_ext
+                    except Exception:
+                        audio_downloaded = False
                 else:
-                    ffmpeg_args.extend(["-c:a", "flac", final_file])
+                    # FFmpeg stream transcode (MP3 or FLAC, or when loudnorm requested)
+                    final_filename = f"{track.safe_filename_base}.{audio_format}"
+                    final_file = os.path.join(download_dir, final_filename)
+                    ffmpeg_args = [
+                        "ffmpeg", "-y", "-hide_banner", "-loglevel", "quiet",
+                        "-reconnect", "1", "-reconnect_streamed", "1", "-reconnect_delay_max", "5",
+                        "-i", cdn_url
+                    ]
+                    if normalize_needed:
+                        ffmpeg_args.extend(["-af", "loudnorm=I=-16:LRA=11:TP=-1.5"])
 
-                try:
-                    proc = subprocess.run(ffmpeg_args, timeout=60)
-                    if proc.returncode == 0 and os.path.exists(final_file) and os.path.getsize(final_file) > 10000:
-                        audio_downloaded = True
-                        source_used = "jiosaavn_320k"
-                except Exception:
-                    audio_downloaded = False
+                    if audio_format == "mp3":
+                        bitrate = "320k" if audio_quality in ("320k", "0") else "256k"
+                        ffmpeg_args.extend(["-c:a", "libmp3lame", "-b:a", bitrate, final_file])
+                    elif audio_format in ("m4a", "mp4"):
+                        ffmpeg_args.extend(["-c:a", "copy", final_file])
+                    else:
+                        ffmpeg_args.extend(["-c:a", "flac", final_file])
 
-        # 2. Fallback to yt-dlp
+                    try:
+                        proc = subprocess.run(ffmpeg_args, timeout=60)
+                        if proc.returncode == 0 and os.path.exists(final_file) and os.path.getsize(final_file) > 10000:
+                            audio_downloaded = True
+                            source_used = "jiosaavn_320k"
+                    except Exception:
+                        audio_downloaded = False
+
+        # 2. Fallback to yt-dlp (Fast stream copy when m4a or zero-transcode enabled)
         if not audio_downloaded and not self._stop_event.is_set():
+            normalize_needed = cfg.get("normalize_loudness", False)
+            fast_copy = cfg.get("fast_stream_copy", True)
+
             out_template = os.path.join(download_dir, f"%(title)s - %(artist,creator,uploader)s - [{track.id}].%(ext)s")
             postprocessor_args = {}
-            if cfg.get("normalize_loudness", True):
+            if normalize_needed:
                 postprocessor_args["ffmpeg"] = ["-af", "loudnorm=I=-16:LRA=11:TP=-1.5"]
 
-            ydl_opts = {
-                "format": "bestaudio/best",
-                "postprocessors": [{
+            # When m4a is selected and loudness normalization is not requested, use zero-transcoding copy!
+            if audio_format == "m4a" and not normalize_needed:
+                postprocessors = [{
+                    "key": "FFmpegExtractAudio",
+                    "preferredcodec": "m4a",
+                }]
+                fmt_selector = "bestaudio[ext=m4a]/bestaudio/best"
+            else:
+                postprocessors = [{
                     "key": "FFmpegExtractAudio",
                     "preferredcodec": audio_format,
                     "preferredquality": audio_quality,
-                }],
+                }]
+                fmt_selector = "bestaudio/best"
+
+            ydl_opts = {
+                "format": fmt_selector,
+                "postprocessors": postprocessors,
                 "postprocessor_args": postprocessor_args,
                 "outtmpl": out_template,
                 "quiet": True,
@@ -162,7 +202,6 @@ class SyncCoordinator:
                 for fname in os.listdir(download_dir):
                     if fname.endswith(expected_suffix):
                         actual_found = os.path.join(download_dir, fname)
-                        # Rename if yt-dlp produced ugly 'Release - Topic' filename
                         desired_name = f"{track.safe_filename_base}.{audio_format}"
                         desired_path = os.path.join(download_dir, desired_name)
                         if actual_found != desired_path:

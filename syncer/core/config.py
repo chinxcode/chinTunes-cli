@@ -11,13 +11,14 @@ class ConfigManager:
     DEFAULT_CONFIG: Dict[str, Any] = {
         "active_target": None,
         "targets": {},
-        "audio_format": "mp3",           # mp3 or flac
+        "audio_format": "mp3",           # mp3, m4a (fastest/lossless container), or flac
         "audio_quality": "0",             # 0 = VBR best, 320k CBR
-        "prefer_jiosaavn_320k": True,    # Studio 320kbps master preference
-        "normalize_loudness": True,       # EBU R128 loudness normalization
+        "fast_stream_copy": True,        # When audio matches or m4a requested, copy directly without FFmpeg re-encoding
+        "prefer_jiosaavn_320k": True,    # Studio 320kbps master preference (direct CDN HTTP stream)
+        "normalize_loudness": False,     # Disabled by default for maximum download speed and 0% CPU; enable if loudness matching needed
         "crop_square_thumbnail": True,    # 1:1 center-cropped artwork
         "max_workers": 3,
-        "rate_limit_delay": 1.5,
+        "rate_limit_delay": 0.5,         # Fast pacing delay
         "embed_lyrics": True,
         "save_lrc_file": False,
         "generate_m3u8": True,

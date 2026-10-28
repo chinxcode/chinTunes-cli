@@ -34,12 +34,20 @@ class InteractiveCLI:
 
     def show_banner(self):
         console.clear()
+        ascii_art = """[bold cyan]
+  ██████╗██╗  ██╗██╗███╗   ██╗████████╗██╗   ██╗███╗   ██╗███████╗███████╗
+ ██╔════╝██║  ██║██║████╗  ██║╚══██╔══╝██║   ██║████╗  ██║██╔════╝██╔════╝
+ ██║     ███████║██║██╔██╗ ██║   ██║   ██║   ██║██╔██╗ ██║█████╗  ███████╗
+ ██║     ██╔══██║██║██║╚██╗██║   ██║   ██║   ██║██║╚██╗██║██╔══╝  ╚════██║
+ ╚██████╗██║  ██║██║██║ ╚████║   ██║   ╚██████╔╝██║ ╚████║███████╗███████║
+  ╚═════╝╚═╝  ╚═╝╚═╝╚═╝  ╚═══╝   ╚═╝    ╚═════╝ ╚═╝  ╚═══╝╚══════╝╚══════╝[/bold cyan]
+      [magenta]♪ ♫ ♩ ♬  High-Fidelity Music Downloader & Syncer  ♬ ♩ ♫ ♪[/magenta]"""
         console.print(
-            Panel.fit(
-                "[bold cyan]🎵 UNIFIED MUSIC SYNCER & STUDIO PRO[/bold cyan]\n"
-                "[dim]YouTube • YouTube Music • JioSaavn 320k Studio Master • Spotify • Synced Lyrics • EBU R128[/dim]",
-                border_style="cyan",
-                padding=(1, 3)
+            Panel(
+                ascii_art + "\n\n"
+                "[dim]YouTube • YouTube Music • JioSaavn 320k • Spotify • Synced Lyrics[/dim]",
+                border_style="bright_blue",
+                padding=(0, 2)
             )
         )
 
@@ -194,6 +202,7 @@ class InteractiveCLI:
             "Select Audio Format:",
             choices=[
                 Choice("MP3 (Universal compatibility, ID3v2.3 tags, embedded lyrics)", value="mp3"),
+                Choice("M4A (AAC Zero-Transcode Stream-Copy - Ultra Fast & Near-0% CPU)", value="m4a"),
                 Choice("FLAC (Lossless compression, Vorbis comments)", value="flac")
             ],
             default=cfg.get("audio_format", "mp3"),
@@ -214,8 +223,14 @@ class InteractiveCLI:
                 style=custom_style
             ).ask()
 
+        fast_copy = questionary.confirm(
+            "Enable High-Speed Stream Copy (Bypasses heavy CPU re-encoding when formats match)?",
+            default=cfg.get("fast_stream_copy", True),
+            style=custom_style
+        ).ask()
+
         jio_master = questionary.confirm(
-            "Prioritize JioSaavn Studio 320kbps CD master (bypasses YouTube stream compression)?",
+            "Prioritize JioSaavn 320kbps CD master (direct HTTP CDN download)?",
             default=cfg.get("prefer_jiosaavn_320k", True),
             style=custom_style
         ).ask()
@@ -233,8 +248,8 @@ class InteractiveCLI:
         ).ask()
 
         loudnorm = questionary.confirm(
-            "Apply EBU R128 Loudness Normalization (-16 LUFS, prevents volume spikes)?",
-            default=cfg.get("normalize_loudness", True),
+            "Apply EBU R128 Loudness Normalization? (Note: disable for maximum speed & lowest CPU)",
+            default=cfg.get("normalize_loudness", False),
             style=custom_style
         ).ask()
 
@@ -273,6 +288,7 @@ class InteractiveCLI:
         cfg.update({
             "audio_format": fmt,
             "audio_quality": quality,
+            "fast_stream_copy": fast_copy,
             "prefer_jiosaavn_320k": jio_master,
             "max_workers": concurrency,
             "normalize_loudness": loudnorm,

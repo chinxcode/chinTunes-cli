@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Unified Multi-Platform Music Syncer & Studio
+ChinTunes - High-Fidelity Music Downloader & Syncer.
 Production-ready, persistent interactive CLI loop with graceful signal handling and clean worker termination.
 """
 
@@ -42,7 +42,7 @@ def run_library_repair(coordinator: SyncCoordinator, download_dir: str):
         )
     )
 
-    audio_files = [f for f in os.listdir(download_dir) if f.endswith(".mp3") or f.endswith(".flac")]
+    audio_files = [f for f in os.listdir(download_dir) if f.endswith((".mp3", ".m4a", ".mp4", ".flac"))]
     if not audio_files:
         console.print("[yellow]No audio files found in directory to repair.[/yellow]")
         return
@@ -64,16 +64,10 @@ def run_library_repair(coordinator: SyncCoordinator, download_dir: str):
             file_path = os.path.join(download_dir, fname)
             vid = fname.split("[")[-1].split("]")[0] if "[" in fname and "]" in fname else fname
 
-            # Support hyphen '-', legacy '===', and em-dash '—'
+            # Standard ' - [' separator
             if " - [" in fname:
                 parts = fname.rsplit(" - [", 1)
                 meta_parts = parts[0].split(" - ")
-            elif " === [" in fname:
-                parts = fname.rsplit(" === [", 1)
-                meta_parts = parts[0].split(" === ")
-            elif " — [" in fname:
-                parts = fname.rsplit(" — [", 1)
-                meta_parts = parts[0].split(" — ")
             else:
                 meta_parts = [fname.rsplit(".", 1)[0]]
 
@@ -89,9 +83,10 @@ def run_library_repair(coordinator: SyncCoordinator, download_dir: str):
             from syncer.tagging.tagger import MetadataTagger
             cover_bytes = MetadataTagger.process_cover_art(candidates, crop_square=True)
 
+            detected_ext = fname.rsplit(".", 1)[-1].lower()
             MetadataTagger.embed(
                 file_path=file_path,
-                audio_format="mp3" if fname.endswith(".mp3") else "flac",
+                audio_format=detected_ext,
                 track=track,
                 lyrics=lyrics_res,
                 cover_bytes=cover_bytes
@@ -282,7 +277,7 @@ def main():
             action = ui.select_action()
 
             if action == "exit":
-                console.print("[dim]Goodbye! Thanks for using Unified Music Syncer Pro.[/dim]")
+                console.print("[dim]Goodbye! Thanks for using ChinTunes.[/dim]")
                 sys.exit(0)
 
             targets = config_mgr.targets
@@ -404,7 +399,7 @@ def main():
 
             should_continue = ui.ask_continue_or_exit()
             if not should_continue:
-                console.print("[dim]Goodbye! Thanks for using Unified Music Syncer Pro.[/dim]")
+                console.print("[dim]Goodbye! Thanks for using ChinTunes.[/dim]")
                 sys.exit(0)
 
         except KeyboardInterrupt:

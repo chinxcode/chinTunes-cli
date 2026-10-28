@@ -3,7 +3,7 @@
 import os
 import subprocess
 import urllib.request
-from typing import Optional, List, Dict, Any
+from typing import Optional, List
 
 from mutagen.mp3 import MP3
 from mutagen.flac import FLAC, Picture
@@ -20,6 +20,8 @@ from mutagen.id3 import (
     APIC,
     Encoding,
 )
+
+from mutagen.mp4 import MP4, MP4Cover
 
 from syncer.core.models import TrackMetadata, LyricsData
 from syncer.tagging.lyrics import LyricsEngine
@@ -64,10 +66,38 @@ class MetadataTagger:
         lyrics: Optional[LyricsData] = None,
         cover_bytes: Optional[bytes] = None
     ):
-        if audio_format == "mp3":
+        ext = audio_format.lower()
+        if ext == "mp3":
             cls._embed_mp3(file_path, track, lyrics, cover_bytes)
-        elif audio_format == "flac":
+        elif ext in ("m4a", "mp4", "aac"):
+            cls._embed_m4a(file_path, track, lyrics, cover_bytes)
+        elif ext == "flac":
             cls._embed_flac(file_path, track, lyrics, cover_bytes)
+
+    @classmethod
+    def _embed_m4a(
+        cls,
+        file_path: str,
+        track: TrackMetadata,
+        lyrics: Optional[LyricsData],
+        cover_bytes: Optional[bytes]
+    ):
+        try:
+            audio = MP4(file_path)
+            audio["\xa9nam"] = [track.title]
+            audio["\xa9ART"] = [track.artist]
+            audio["\xa9alb"] = [track.album]
+            if track.year:
+                audio["\xa9day"] = [str(track.year)]
+            if track.playlist_index:
+                audio["trkn"] = [(int(track.playlist_index), 0)]
+            if lyrics and (lyrics.plain or lyrics.synced):
+                audio["\xa9lyr"] = [lyrics.plain or lyrics.synced]
+            if cover_bytes:
+                audio["covr"] = [MP4Cover(cover_bytes, imageformat=MP4Cover.FORMAT_JPEG)]
+            audio.save()
+        except Exception as e:
+            print(f"Warning: could not write M4A tags to {file_path}: {e}")
 
     @classmethod
     def _embed_mp3(
