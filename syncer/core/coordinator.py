@@ -2,6 +2,7 @@
 
 import os
 import time
+import shutil
 import subprocess
 import urllib.request
 import threading
@@ -91,12 +92,12 @@ class SyncCoordinator:
                     track.duration = track.duration or matches[0].duration
 
             if cdn_url and not self._stop_event.is_set():
-                track.artist = clean_artist_name(matched_artist)
-                normalize_needed = cfg.get("normalize_loudness", False)
+                has_ffmpeg = bool(shutil.which("ffmpeg"))
+                normalize_needed = cfg.get("normalize_loudness", False) and has_ffmpeg
                 fast_copy = cfg.get("fast_stream_copy", True)
 
-                # If user selected m4a/aac or if fast_stream_copy without loudnorm is enabled
-                if (audio_format in ("m4a", "mp4", "aac") or (fast_copy and not normalize_needed and audio_format == "m4a")) and not normalize_needed:
+                # Pure Python Direct Stream Saving: when m4a requested, or fast_copy enabled without loudnorm, or when FFmpeg is absent
+                if not has_ffmpeg or (audio_format in ("m4a", "mp4", "aac")) or (fast_copy and not normalize_needed):
                     target_ext = "m4a"
                     final_filename = f"{track.safe_filename_base}.{target_ext}"
                     final_file = os.path.join(download_dir, final_filename)
@@ -116,8 +117,8 @@ class SyncCoordinator:
                             audio_format = target_ext
                     except Exception:
                         audio_downloaded = False
-                else:
-                    # FFmpeg stream transcode (MP3 or FLAC, or when loudnorm requested)
+                elif has_ffmpeg:
+                    # FFmpeg stream transcode (strictly only when user wants MP3/FLAC and FFmpeg is installed)
                     final_filename = f"{track.safe_filename_base}.{audio_format}"
                     final_file = os.path.join(download_dir, final_filename)
                     ffmpeg_args = [
@@ -146,7 +147,8 @@ class SyncCoordinator:
 
         # 2. Fallback to yt-dlp (Fast stream copy when m4a or zero-transcode enabled)
         if not audio_downloaded and not self._stop_event.is_set():
-            normalize_needed = cfg.get("normalize_loudness", False)
+            has_ffmpeg = bool(shutil.which("ffmpeg"))
+            normalize_needed = cfg.get("normalize_loudness", False) and has_ffmpeg
             fast_copy = cfg.get("fast_stream_copy", True)
 
             out_template = os.path.join(download_dir, f"%(title)s - %(artist,creator,uploader)s - [{track.id}].%(ext)s")
@@ -154,8 +156,12 @@ class SyncCoordinator:
             if normalize_needed:
                 postprocessor_args["ffmpeg"] = ["-af", "loudnorm=I=-16:LRA=11:TP=-1.5"]
 
-            # When m4a is selected and loudness normalization is not requested, use zero-transcoding copy!
-            if audio_format == "m4a" and not normalize_needed:
+            # If FFmpeg is missing on the machine, download direct M4A stream without postprocessors
+            if not has_ffmpeg:
+                postprocessors = []
+                fmt_selector = "ba[ext=m4a]/ba/b"
+                audio_format = "m4a"
+            elif audio_format in ("m4a", "mp4") and not normalize_needed:
                 postprocessors = [{
                     "key": "FFmpegExtractAudio",
                     "preferredcodec": "m4a",
@@ -198,11 +204,14 @@ class SyncCoordinator:
                     track.duration = info.get("duration") or track.duration
                     source_used = "youtube"
 
-                expected_suffix = f"[{track.id}].{audio_format}"
+                # Find downloaded file (handling format fallback if ffmpeg was absent)
+                actual_found = None
                 for fname in os.listdir(download_dir):
-                    if fname.endswith(expected_suffix):
+                    if f"[{track.id}]." in fname and not fname.endswith((".lrc", ".json", ".m3u8")):
                         actual_found = os.path.join(download_dir, fname)
-                        desired_name = f"{track.safe_filename_base}.{audio_format}"
+                        actual_ext = fname.rsplit(".", 1)[-1].lower()
+                        audio_format = actual_ext
+                        desired_name = f"{track.safe_filename_base}.{actual_ext}"
                         desired_path = os.path.join(download_dir, desired_name)
                         if actual_found != desired_path:
                             try:

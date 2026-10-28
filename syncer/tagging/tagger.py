@@ -43,16 +43,28 @@ class MetadataTagger:
                 with urllib.request.urlopen(req, timeout=8) as resp:
                     data = resp.read()
                     if len(data) > 1000:
-                        vf_args = ["-vf", "crop=min(iw\\,ih):min(iw\\,ih)"] if crop_square else []
-                        proc = subprocess.run(
-                            ["ffmpeg", "-hide_banner", "-loglevel", "error", "-i", "pipe:0", *vf_args, "-f", "image2", "-vcodec", "mjpeg", "pipe:1"],
-                            input=data,
-                            stdout=subprocess.PIPE,
-                            stderr=subprocess.PIPE
-                        )
-                        if proc.returncode == 0 and proc.stdout:
-                            return proc.stdout
-                        return data
+                        if not crop_square:
+                            return data
+
+                        # Pure Python 1:1 square center-crop using Pillow (No FFmpeg needed)
+                        try:
+                            from PIL import Image
+                            import io
+                            img = Image.open(io.BytesIO(data))
+                            width, height = img.size
+                            min_dim = min(width, height)
+                            left = (width - min_dim) // 2
+                            top = (height - min_dim) // 2
+                            right = left + min_dim
+                            bottom = top + min_dim
+                            cropped = img.crop((left, top, right, bottom))
+                            if cropped.mode in ("RGBA", "P"):
+                                cropped = cropped.convert("RGB")
+                            buf = io.BytesIO()
+                            cropped.save(buf, format="JPEG", quality=90)
+                            return buf.getvalue()
+                        except Exception:
+                            return data
             except Exception:
                 continue
         return None

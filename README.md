@@ -19,9 +19,9 @@ Double-click `install.bat`
 *(or run `python install.py` in PowerShell / Command Prompt)*
 
 > **What the installer does automatically:**  
-> 1. Installs all required packages.  
-> 2. Puts the `chintunes` command into your system PATH.  
-> 3. No manual environment setup or technical steps needed.
+> 1. **System Check**: Analyzes your Python version and checks for FFmpeg. If missing, it asks for permission and automatically installs them for you (via Homebrew on Mac, Winget/Chocolatey on Windows, or apt/dnf/pacman on Linux).  
+> 2. **Installs Packages**: Installs all required software packages.  
+> 3. **Configures PATH**: Adds the `chintunes` command to your system environment PATH permanently so you can run it from anywhere.
 
 ---
 
@@ -46,13 +46,6 @@ Navigate the interactive menu using your **arrow keys** and press **Enter** to c
 - **Square Artwork**: Auto-crops video thumbnails into clean 1:1 album covers.
 - **Clean File Names**: Saved neatly as `Song Title - Artist - [ID].mp3` (no ugly tags or channel noise).
 - **Offline Repair**: Backfill missing lyrics and covers on your existing music library anytime.
-
----
-
-## 📋 Requirements
-
-- **Python 3.8+**
-- **FFmpeg** (installed on system)
 
 ---
 
