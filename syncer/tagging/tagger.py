@@ -103,8 +103,8 @@ class MetadataTagger:
                 audio["\xa9day"] = [str(track.year)]
             if track.playlist_index:
                 audio["trkn"] = [(int(track.playlist_index), 0)]
-            if lyrics and (lyrics.plain or lyrics.synced):
-                audio["\xa9lyr"] = [lyrics.plain or lyrics.synced]
+            if lyrics and (lyrics.synced or lyrics.plain):
+                audio["\xa9lyr"] = [lyrics.synced or lyrics.plain]
                 if lyrics.synced:
                     try:
                         lrc_path = os.path.splitext(file_path)[0] + ".lrc"

@@ -36,7 +36,7 @@ class ConfigManager:
                 with open(self.config_path, "r", encoding="utf-8") as f:
                     saved = json.load(f)
                     for k, v in saved.items():
-                        if k not in ("targets", "playlists", "playlist_url", "download_dir", "embed_synced_lyrics"):
+                        if k not in ("targets", "playlists", "playlist_url", "download_dir", "embed_synced_lyrics") and v is not None:
                             cfg[k] = v
 
                     targets = saved.get("targets") or saved.get("playlists") or {}

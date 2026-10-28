@@ -326,21 +326,29 @@ class InteractiveCLI:
             style=custom_style
         ).ask()
 
-        cfg.update({
-            "audio_format": fmt,
-            "audio_quality": quality,
-            "fast_stream_copy": fast_copy,
-            "prefer_jiosaavn_320k": jio_master,
-            "max_workers": concurrency,
-            "normalize_loudness": loudnorm,
-            "crop_square_thumbnail": square_crop,
-            "embed_lyrics": lyrics,
-            "save_lrc_file": save_lrc,
-            "generate_m3u8": m3u8,
-            "clean_removed_tracks": clean,
-        })
-        self.config_manager.save()
-        console.print("\n[bold green]✔ Audio & Engine preferences successfully saved![/bold green]\n")
+        updates = {}
+        for k, v in [
+            ("audio_format", fmt),
+            ("audio_quality", quality),
+            ("fast_stream_copy", fast_copy),
+            ("prefer_jiosaavn_320k", jio_master),
+            ("max_workers", concurrency),
+            ("normalize_loudness", loudnorm),
+            ("crop_square_thumbnail", square_crop),
+            ("embed_lyrics", lyrics),
+            ("save_lrc_file", save_lrc),
+            ("generate_m3u8", m3u8),
+            ("clean_removed_tracks", clean),
+        ]:
+            if v is not None:
+                updates[k] = v
+
+        if updates:
+            cfg.update(updates)
+            self.config_manager.save()
+            console.print("\n[bold green]✔ Audio & Engine preferences successfully saved![/bold green]\n")
+        else:
+            console.print("\n[yellow]Settings unchanged (cancelled).[/yellow]\n")
 
     def ask_continue_or_exit(self) -> bool:
         """Prompts whether the user wants to perform another action or exit."""

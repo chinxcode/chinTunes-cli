@@ -147,8 +147,8 @@ def execute_sync_pipeline(coordinator: SyncCoordinator, collection, download_dir
 
     interrupted = False
     if pending_tracks:
-        max_workers = 1 if collection.is_single else config_mgr.get("max_workers", 3)
-        pacing = 0.0 if collection.is_single else config_mgr.get("rate_limit_delay", 1.5)
+        max_workers = 1 if collection.is_single else (config_mgr.get("max_workers") or 3)
+        pacing = 0.0 if collection.is_single else (config_mgr.get("rate_limit_delay") or 1.5)
 
         console.print(
             f"[bold cyan]🚀 Syncing {len(pending_tracks)} track(s) "

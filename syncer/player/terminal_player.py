@@ -32,6 +32,9 @@ class TerminalPlayer:
         self.playback_offset = 0.0      # Current position offset in seconds
         self.process_start_time = 0.0    # Time when active player process started
         self.synced_lines: List[Tuple[float, str]] = []
+        self.plain_lyrics_lines: List[str] = []
+        self.show_lyrics: bool = True  # Enabled by default; toggled via 'C' / 'c'
+        self._lyrics_engine = LyricsEngine()
         self._proc: Optional[subprocess.Popen] = None
         self._player_cmd = "ffplay" if shutil.which("ffplay") else ("afplay" if shutil.which("afplay") else "mpv")
 
@@ -72,7 +75,7 @@ class TerminalPlayer:
 
         try:
             self.song_duration = self._read_duration(track.file_path)
-            self.synced_lines = self._load_synced_lyrics(track)
+            self._load_track_lyrics(track)
             self.playback_offset = max(0.0, min(start_offset, self.song_duration - 1.0 if self.song_duration > 0 else start_offset))
             self.process_start_time = time.time()
             self.is_paused = False
@@ -189,45 +192,105 @@ class TerminalPlayer:
                 return float(mf.info.length)
         except Exception:
             pass
+    def _toggle_lyrics(self):
+        """Toggle lyrics display on/off."""
+        self.show_lyrics = not self.show_lyrics
+
+    def _read_duration(self, file_path: str) -> float:
+        try:
+            mf = mutagen.File(file_path)
+            if mf and mf.info and hasattr(mf.info, "length"):
+                return float(mf.info.length)
+        except Exception:
+            pass
         return 0.0
 
-    def _load_synced_lyrics(self, track: PlaylistTrackInfo) -> List[Tuple[float, str]]:
-        raw_lrc = ""
+    def _load_track_lyrics(self, track: PlaylistTrackInfo):
+        """
+        Loads synced lyrics and plain lyrics for the track with hierarchical fallback:
+        1. Local .lrc file next to track
+        2. Embedded tags (©lyr in M4A, USLT/SYLT in MP3, LYRICS in FLAC)
+        3. Online search via LyricsEngine (LRCLIB, SyncedLyrics, JioSaavn)
+        """
+        self.synced_lines = []
+        self.plain_lyrics_lines = []
+
+        raw_text = ""
         lrc_path = os.path.splitext(track.file_path)[0] + ".lrc"
+
+        # 1. Check local .lrc file
         if os.path.exists(lrc_path):
             try:
                 with open(lrc_path, "r", encoding="utf-8") as f:
-                    raw_lrc = f.read()
+                    raw_text = f.read()
             except Exception:
                 pass
 
-        if not raw_lrc:
+        # 2. Check embedded tags
+        if not raw_text:
             try:
                 mf = mutagen.File(track.file_path)
                 if mf:
+                    # M4A ©lyr or MP3 USLT or FLAC LYRICS
                     lyr = mf.get("©lyr") or mf.get("USLT::eng") or mf.get("LYRICS")
                     if lyr:
-                        raw_lrc = lyr[0] if isinstance(lyr, list) else str(lyr)
+                        raw_text = lyr[0] if isinstance(lyr, list) else str(lyr)
+                    elif hasattr(mf, "tags") and mf.tags:
+                        for tag_k in ("USLT::eng", "USLT::XXX", "USLT", "LYRICS"):
+                            if tag_k in mf.tags:
+                                raw_text = str(mf.tags[tag_k])
+                                break
             except Exception:
                 pass
 
-        lines = []
-        if raw_lrc:
-            import re
-            for line in raw_lrc.splitlines():
-                match = re.match(r"^\[(\d+):(\d+(?:\.\d+)?)\](.*)", line.strip())
-                if match:
-                    mins = int(match.group(1))
-                    secs = float(match.group(2))
-                    text = match.group(3).strip()
-                    if text:
-                        lines.append((mins * 60 + secs, text))
+        # 3. If still empty, search online and auto-cache
+        if not raw_text:
+            try:
+                ld = self._lyrics_engine.find_lyrics(
+                    title=track.title,
+                    artist=track.artist or "",
+                    duration=int(self.song_duration) if self.song_duration > 0 else None
+                )
+                if ld:
+                    if ld.synced:
+                        raw_text = ld.synced
+                        # Auto-save local .lrc file for immediate next load
+                        try:
+                            with open(lrc_path, "w", encoding="utf-8") as lf:
+                                lf.write(ld.synced)
+                        except Exception:
+                            pass
+                    elif ld.plain:
+                        raw_text = ld.plain
+            except Exception:
+                pass
 
-        lines.sort(key=lambda x: x[0])
-        return lines
+        if not raw_text:
+            return
+
+        # Parse raw_text into synced lines or plain lines
+        import re
+        synced = []
+        for line in raw_text.splitlines():
+            line_str = line.strip()
+            match = re.match(r"^\[(\d+):(\d+(?:\.\d+)?)\](.*)", line_str)
+            if match:
+                mins = int(match.group(1))
+                secs = float(match.group(2))
+                text = match.group(3).strip()
+                if text:
+                    synced.append((mins * 60 + secs, text))
+
+        if synced:
+            synced.sort(key=lambda x: x[0])
+            self.synced_lines = synced
+        else:
+            # Normal plain lyrics without timestamps
+            plain_lines = [l.strip() for l in raw_text.splitlines() if l.strip()]
+            self.plain_lyrics_lines = plain_lines
 
     def _render_ui(self) -> Panel:
-        """Renders the Rich terminal player interface with live karaoke highlight."""
+        """Renders the Rich terminal player interface with live karaoke or plain lyrics."""
         track = self.tracks[self.current_index]
         cur_pos = self._get_current_pos()
 
@@ -243,17 +306,23 @@ class TerminalPlayer:
         vol_pct = int(self.volume * 100)
         vol_badge = f"🔊 {vol_pct}%"
 
-        # Find active karaoke lyric line
-        active_idx = -1
-        for idx, (t_sec, txt) in enumerate(self.synced_lines):
-            if cur_pos >= t_sec:
-                active_idx = idx
-            else:
-                break
+        # Build lyrics section based on show_lyrics toggle
+        if not self.show_lyrics:
+            lyrics_header = "[dim]── Lyrics: Hidden (Press [bold white]C[/bold white] to show) ──────────────────────────[/dim]"
+            lyrics_block = "  [dim](Lyrics display hidden - press [bold white]C[/bold white] to toggle back on)[/dim]"
+            lyrics_footer = "[dim]────────────────────────────────────────────────────[/dim]"
+        elif self.synced_lines:
+            lyrics_header = "[bold bright_blue]── Karaoke Synced Lyrics ────────────────────────────[/bold bright_blue]"
+            # Find active karaoke lyric line
+            active_idx = -1
+            for idx, (t_sec, txt) in enumerate(self.synced_lines):
+                if cur_pos >= t_sec:
+                    active_idx = idx
+                else:
+                    break
 
-        # Build 5-line karaoke window: 2 previous, 1 active, 2 upcoming
-        lyric_rows = []
-        if self.synced_lines:
+            # Build 5-line karaoke window: 2 previous, 1 active, 2 upcoming
+            lyric_rows = []
             start_l = max(0, active_idx - 2)
             end_l = min(len(self.synced_lines), active_idx + 3)
 
@@ -265,13 +334,32 @@ class TerminalPlayer:
                     lyric_rows.append(f"  [dim]{text}[/dim]")
                 else:
                     lyric_rows.append(f"  [white]{text}[/white]")
+            lyrics_block = "\n".join(lyric_rows) if lyric_rows else "  [dim]♫ Music playing... ♫[/dim]"
+            lyrics_footer = "[bold bright_blue]────────────────────────────────────────────────────[/bold bright_blue]"
+        elif self.plain_lyrics_lines:
+            lyrics_header = "[bold bright_cyan]── Plain Lyrics (Synced unavailable) ───────────────[/bold bright_cyan]"
+            # Scroll plain lyrics proportionally across song duration
+            total_lines = len(self.plain_lyrics_lines)
+            est_idx = int(ratio * total_lines) if total_lines > 0 else 0
+            start_l = max(0, est_idx - 2)
+            end_l = min(total_lines, start_l + 5)
+            lyric_rows = []
+            for i in range(start_l, end_l):
+                txt = self.plain_lyrics_lines[i]
+                if i == est_idx:
+                    lyric_rows.append(f"  [bold bright_cyan]▸  {txt}[/bold bright_cyan]")
+                else:
+                    lyric_rows.append(f"  [white]{txt}[/white]")
+            lyrics_block = "\n".join(lyric_rows)
+            lyrics_footer = "[bold bright_cyan]────────────────────────────────────────────────────[/bold bright_cyan]"
         else:
-            lyric_rows = [
-                "  [dim](No synchronized lyrics found for this track)[/dim]",
+            lyrics_header = "[dim]── Lyrics ──────────────────────────────────────────[/dim]"
+            lyrics_block = (
+                "  [dim](No synchronized or plain lyrics found for this track)[/dim]\n"
                 "  [dim]Tip: Use 'Fix Missing Lyrics' in the main menu to automatically backfill lyrics.[/dim]"
-            ]
+            )
+            lyrics_footer = "[dim]────────────────────────────────────────────────────[/dim]"
 
-        lyrics_block = "\n".join(lyric_rows)
         track_pos = f"Track {self.current_index + 1} of {len(self.tracks)}"
 
         content = f"""
@@ -280,10 +368,10 @@ class TerminalPlayer:
 
  {state_badge}  {cur_str} {bar} {dur_str}  [dim]|[/dim]  [cyan]{vol_badge}[/cyan]
 
-[bold bright_blue]── Karaoke Synced Lyrics ────────────────────────────[/bold bright_blue]
+{lyrics_header}
 {lyrics_block}
-[bold bright_blue]────────────────────────────────────────────────────[/bold bright_blue]
- [bold cyan]Controls:[/bold cyan] [white][Space][/white] Pause/Play  [white][←/→][/white] Peek ±5s  [white][↑/↓][/white] Volume  [white][N][/white] Next  [white][P][/white] Prev  [white][Q/Esc][/white] Quit
+{lyrics_footer}
+ [bold cyan]Controls:[/bold cyan] [white][Space][/white] Play/Pause  [white][←/→][/white] Peek ±5s  [white][↑/↓][/white] Vol  [white][C][/white] Lyrics  [white][N/P][/white] Next/Prev  [white][Q][/white] Quit
 """
         return Panel(
             content.strip(),
@@ -292,7 +380,7 @@ class TerminalPlayer:
         )
 
     def _keyboard_listener(self):
-        """Robust key listener handling full ANSI arrow escape sequences without quitting on arrows."""
+        """Robust key listener handling full ANSI arrow escape sequences and playback controls."""
         if os.name == "nt":
             import msvcrt
             while not self.stop_requested:
@@ -303,6 +391,8 @@ class TerminalPlayer:
                         break
                     elif ch == b' ':
                         self._toggle_pause()
+                    elif ch in (b'c', b'C'):
+                        self._toggle_lyrics()
                     elif ch in (b'n', b'N'):
                         self._next_track()
                     elif ch in (b'p', b'P'):
@@ -346,6 +436,8 @@ class TerminalPlayer:
                                 return
                             elif k == " ":
                                 self._toggle_pause()
+                            elif k in ("c", "C"):
+                                self._toggle_lyrics()
                             elif k in ("n", "N"):
                                 self._next_track()
                             elif k in ("p", "P"):
