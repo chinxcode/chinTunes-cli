@@ -60,26 +60,26 @@ class InteractiveCLI:
             active_name = active_info.get("name", "Active Playlist")
             choices.append(
                 Choice(
-                    title=f"⚡ Sync Active Target: '{active_name}'",
+                    title=f"⚡ Sync '{active_name}'",
                     value="sync_active"
                 )
             )
 
         choices.extend([
             Choice(
-                title="📥 Download Any Link (Song, Album, or Playlist URL)",
+                title="📥 Download Song or Playlist",
                 value="quick_download"
             ),
             Choice(
-                title="📑 Manage Saved Library (Switch, Add, or Remove Targets)",
+                title="📑 My Saved Playlists",
                 value="manage_playlists"
             ),
             Choice(
-                title="🛠️ Library Repair Mode (Backfill Lyrics & Square Covers offline)",
+                title="🛠️ Fix Missing Lyrics & Artwork",
                 value="repair_library"
             ),
             Choice(
-                title="⚙️ Audio & Engine Settings (Quality, Concurrency, Normalization)",
+                title="⚙️ Settings",
                 value="settings"
             ),
             Choice(
@@ -91,8 +91,7 @@ class InteractiveCLI:
         action = questionary.select(
             "What would you like to do?",
             choices=choices,
-            style=custom_style,
-            instruction="(Use arrow keys to navigate, Enter to select)"
+            style=custom_style
         ).ask()
 
         return action or "exit"
@@ -199,11 +198,11 @@ class InteractiveCLI:
         console.print("\n[bold yellow]── Audio & Engine Configuration ──[/bold yellow]")
 
         fmt = questionary.select(
-            "Select Audio Format:",
+            "Audio Format:",
             choices=[
-                Choice("MP3 (Universal compatibility, ID3v2.3 tags, embedded lyrics)", value="mp3"),
-                Choice("M4A (AAC Zero-Transcode Stream-Copy - Ultra Fast & Near-0% CPU)", value="m4a"),
-                Choice("FLAC (Lossless compression, Vorbis comments)", value="flac")
+                Choice("MP3 (Universal - works on everything)", value="mp3"),
+                Choice("M4A (Fastest & best quality)", value="m4a"),
+                Choice("FLAC (Lossless)", value="flac")
             ],
             default=cfg.get("audio_format", "mp3"),
             style=custom_style
@@ -212,55 +211,54 @@ class InteractiveCLI:
         quality = cfg.get("audio_quality", "0")
         if fmt == "mp3":
             quality = questionary.select(
-                "Select MP3 Quality / Bitrate:",
+                "Audio Quality:",
                 choices=[
-                    Choice("VBR 0 (~250-320 kbps) - Best Variable Bitrate", value="0"),
-                    Choice("CBR 320k - Maximum Constant Bitrate", value="320k"),
-                    Choice("CBR 256k - High Quality Constant Bitrate", value="256k"),
-                    Choice("CBR 192k - Standard Quality", value="192k")
+                    Choice("Best (320k / VBR 0) - Highest Quality", value="0"),
+                    Choice("High (256k)", value="256k"),
+                    Choice("Standard (192k)", value="192k")
                 ],
                 default=cfg.get("audio_quality", "0"),
                 style=custom_style
             ).ask()
 
         fast_copy = questionary.confirm(
-            "Enable High-Speed Stream Copy (Bypasses heavy CPU re-encoding when formats match)?",
+            "Enable High-Speed Mode (Fast download with near-0% CPU)?",
             default=cfg.get("fast_stream_copy", True),
             style=custom_style
         ).ask()
 
         jio_master = questionary.confirm(
-            "Prioritize JioSaavn 320kbps CD master (direct HTTP CDN download)?",
+            "Prefer 320kbps Studio Masters (from JioSaavn when available)?",
             default=cfg.get("prefer_jiosaavn_320k", True),
             style=custom_style
         ).ask()
 
         concurrency = questionary.select(
-            "Concurrent download threads:",
+            "Download Speed / Concurrency:",
             choices=[
-                Choice("1 thread (Sequential, safest against IP rate limits)", value=1),
-                Choice("2 threads (Recommended safe balance)", value=2),
-                Choice("3 threads (Fast download speed)", value=3),
-                Choice("4 threads (Maximum aggressive concurrency)", value=4),
+                Choice("1 track at a time (Sequential)", value=1),
+                Choice("2 tracks at a time (Balanced)", value=2),
+                Choice("3 tracks at a time (Fast)", value=3),
+                Choice("4 tracks at a time (Maximum Speed)", value=4),
             ],
             default=cfg.get("max_workers", 3),
             style=custom_style
         ).ask()
 
         loudnorm = questionary.confirm(
-            "Apply EBU R128 Loudness Normalization? (Note: disable for maximum speed & lowest CPU)",
+            "Equalize volume between songs (Loudness Normalization)?",
             default=cfg.get("normalize_loudness", False),
             style=custom_style
         ).ask()
 
         square_crop = questionary.confirm(
-            "Auto-crop video thumbnails into clean 1:1 square album covers?",
+            "Crop cover artwork into square shape?",
             default=cfg.get("crop_square_thumbnail", True),
             style=custom_style
         ).ask()
 
         lyrics = questionary.confirm(
-            "Search and embed timed synchronized (SYLT) and plain (USLT) lyrics?",
+            "Download and embed lyrics into songs?",
             default=cfg.get("embed_lyrics", True),
             style=custom_style
         ).ask()
@@ -268,19 +266,19 @@ class InteractiveCLI:
         save_lrc = False
         if lyrics:
             save_lrc = questionary.confirm(
-                "Also save companion external .lrc file in folder for mobile/car players?",
+                "Also save .lrc lyrics file next to the song?",
                 default=cfg.get("save_lrc_file", False),
                 style=custom_style
             ).ask()
 
         m3u8 = questionary.confirm(
-            "Maintain .m3u8 playlist file in directory preserving online track order?",
+            "Create .m3u8 playlist file?",
             default=cfg.get("generate_m3u8", True),
             style=custom_style
         ).ask()
 
         clean = questionary.confirm(
-            "Auto-delete local tracks if they get removed from the remote playlist?",
+            "Delete local songs if they get removed from online playlist?",
             default=cfg.get("clean_removed_tracks", False),
             style=custom_style
         ).ask()

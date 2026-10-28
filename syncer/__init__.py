@@ -1,2 +1,8 @@
-"""Unified Sync Playlist package."""
-__version__ = "2.0.0"
+"""ChinTunes - High-Fidelity Music Downloader & Studio Syncer."""
+
+__version__ = "1.0.0"
+
+def cli():
+    from main import main
+    main()
+
