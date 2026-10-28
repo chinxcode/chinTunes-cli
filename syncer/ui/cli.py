@@ -66,11 +66,15 @@ class InteractiveCLI:
 
         choices.extend([
             Choice(
+                title="▶️ Play Music (Terminal Mini-Player & Live Karaoke)",
+                value="play_music"
+            ),
+            Choice(
                 title="📥 Download Song or Playlist",
                 value="quick_download"
             ),
             Choice(
-                title="📑 My Saved Playlists",
+                title="📑 Playlist Manager (View, Add/Remove Songs, Custom Playlists)",
                 value="manage_playlists"
             ),
             Choice(
@@ -168,9 +172,11 @@ class InteractiveCLI:
                 title = f"{prefix}{pinfo.get('name', key)} ({t_type}) -> {pinfo.get('folder')}"
                 choices.append(Choice(title=title, value=key))
 
-        choices.append(Choice(title="➕ Add New Playlist / Link", value="__add_new__"))
+        choices.append(Choice(title="✨ Create New Custom Playlist", value="__create_custom__"))
+        choices.append(Choice(title="➕ Add Remote Playlist / Link", value="__add_new__"))
         if targets:
-            choices.append(Choice(title="🗑️ Delete a Saved Target", value="__delete__"))
+            choices.append(Choice(title="🎵 View & Manage Songs in Playlist", value="__manage_songs__"))
+            choices.append(Choice(title="🗑️ Delete an Entire Playlist", value="__delete__"))
         choices.append(Choice(title="🔙 Back to Main Menu", value="__back__"))
 
         return questionary.select(
@@ -189,6 +195,44 @@ class InteractiveCLI:
         return questionary.select(
             "Choose a target to remove from saved library:",
             choices=choices,
+            style=custom_style
+        ).ask()
+
+    def ask_custom_playlist_name(self) -> str:
+        name = questionary.text(
+            "Enter a name for your new Custom Playlist:",
+            default="My Favorites",
+            style=custom_style
+        ).ask()
+        return (name or "Custom Playlist").strip()
+
+    def select_track_from_playlist(self, tracks: List[Any], playlist_name: str) -> Optional[int]:
+        if not tracks:
+            console.print(f"[yellow]No songs currently found in '{playlist_name}'.[/yellow]")
+            return None
+
+        choices = []
+        for idx, t in enumerate(tracks):
+            lrc_badge = "[LRC] " if getattr(t, "has_lrc", False) else ""
+            title = f"{idx + 1}. {lrc_badge}{t.title} - {t.artist} ({t.extension.upper()} • {t.size_mb}MB)"
+            choices.append(Choice(title=title, value=idx))
+
+        choices.append(Choice(title="🔙 Back to Playlist Menu", value="__back__"))
+        return questionary.select(
+            f"Select a song from '{playlist_name}':",
+            choices=choices,
+            style=custom_style,
+            instruction="(Use arrow keys, Enter to pick)"
+        ).ask()
+
+    def ask_track_action(self, track_display: str) -> str:
+        return questionary.select(
+            f"What would you like to do with '{track_display}'?",
+            choices=[
+                Choice("▶️ Play Now (Terminal Mini-Player)", value="play"),
+                Choice("🗑️ Remove Track (Delete File & Sync History)", value="delete"),
+                Choice("🔙 Cancel", value="cancel")
+            ],
             style=custom_style
         ).ask()
 

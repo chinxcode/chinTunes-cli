@@ -123,6 +123,16 @@ def check_and_install_ffmpeg():
     return False
 
 
+def get_chintunes_env_dir() -> Path:
+    """Returns dedicated isolated environment directory for ChinTunes."""
+    if os.name == "nt":
+        appdata = os.environ.get("LOCALAPPDATA") or os.environ.get("APPDATA")
+        if appdata:
+            return Path(appdata) / "ChinTunes" / "env"
+        return Path.home() / ".chintunes" / "env"
+    return Path.home() / ".chintunes" / "env"
+
+
 def get_install_bin_dir() -> Path:
     """Returns directory for placing command launchers."""
     if os.name == "nt":
@@ -198,31 +208,41 @@ def install():
 
     check_and_install_ffmpeg()
 
-    # 2. Package Installation
+    # 2. Isolated Environment Setup & Package Installation
     repo_dir = Path(__file__).resolve().parent
-    print(f"\n[{BOLD}2/4{RESET}] Installing ChinTunes package & dependencies...")
-    pip_cmd = [sys.executable, "-m", "pip", "install", "-e", str(repo_dir)]
-    try:
-        subprocess.check_call(pip_cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-        print(f" {GREEN}✔{RESET} Dependencies successfully installed.")
-    except Exception:
-        subprocess.check_call([sys.executable, "-m", "pip", "install", "--user", "-e", str(repo_dir)])
+    env_dir = get_chintunes_env_dir()
+    print(f"\n[{BOLD}2/4{RESET}] Creating isolated environment in {CYAN}{env_dir}{RESET}...")
+    import venv
+    venv.create(env_dir, with_pip=True)
+
+    if os.name == "nt":
+        env_python = env_dir / "Scripts" / "python.exe"
+    else:
+        env_python = env_dir / "bin" / "python"
+
+    print(f" {GREEN}✔{RESET} Isolated environment created.")
+    print(f"   Installing ChinTunes package & audio engine inside isolated environment...")
+    pip_cmd = [str(env_python), "-m", "pip", "install", "--upgrade", "pip", "setuptools"]
+    subprocess.run(pip_cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+
+    pip_install_cmd = [str(env_python), "-m", "pip", "install", "-e", str(repo_dir)]
+    subprocess.check_call(pip_install_cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    print(f" {GREEN}✔{RESET} All dependencies installed in isolated environment (0 global impact).")
 
     # 3. Setup Global Command Launcher
     print(f"\n[{BOLD}3/4{RESET}] Setting up global command launcher...")
     bin_dir = get_install_bin_dir()
     bin_dir.mkdir(parents=True, exist_ok=True)
-    python_exec = sys.executable
 
     if os.name == "nt":
-        bat_content = f'@echo off\r\n"{python_exec}" -m syncer %*\r\n'
+        bat_content = f'@echo off\r\n"{env_python}" -m syncer %*\r\n'
         for name in ["chintunes.bat", "chintune.bat", "chintunes.cmd"]:
             target_bat = bin_dir / name
             with open(target_bat, "w", encoding="utf-8") as f:
                 f.write(bat_content)
         print(f" {GREEN}✔{RESET} Created Windows launchers in {CYAN}{bin_dir}{RESET}")
     else:
-        sh_content = f'#!/bin/sh\nexec "{python_exec}" -m syncer "$@"\n'
+        sh_content = f'#!/bin/sh\nexec "{env_python}" -m syncer "$@"\n'
         for name in ["chintunes", "chintune"]:
             target_sh = bin_dir / name
             with open(target_sh, "w", encoding="utf-8") as f:

@@ -6,6 +6,12 @@ Production-ready, persistent interactive CLI loop with graceful signal handling 
 
 import os
 import sys
+
+# Auto-use the isolated ~/.chintunes/env virtual environment if available
+_ISOLATED_PYTHON = os.path.expanduser("~/.chintunes/env/bin/python")
+if os.path.exists(_ISOLATED_PYTHON) and os.path.abspath(sys.executable) != os.path.abspath(_ISOLATED_PYTHON):
+    os.execv(_ISOLATED_PYTHON, [_ISOLATED_PYTHON] + sys.argv)
+
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
 from rich.console import Console
@@ -23,6 +29,8 @@ from syncer.core.config import ConfigManager
 from syncer.core.history import HistoryManager
 from syncer.core.coordinator import SyncCoordinator
 from syncer.core.models import TrackMetadata
+from syncer.core.playlist_manager import PlaylistManager
+from syncer.player.terminal_player import TerminalPlayer
 from syncer.providers.registry import ProviderRegistry
 from syncer.ui.cli import InteractiveCLI
 
@@ -317,13 +325,54 @@ def main():
 
                     execute_sync_pipeline(coordinator, collection, custom_folder, config_mgr)
 
-            # 2. Manage Saved Playlists
+            # 2. Terminal Mini-Player & Live Karaoke
+            elif action == "play_music":
+                pl_mgr = PlaylistManager(config_mgr)
+                all_pls = pl_mgr.list_playlists()
+                if not all_pls:
+                    console.print("[yellow]⚠️ No playlists found in your library yet. Download or create one first![/yellow]")
+                    continue
+
+                # Select which playlist to play
+                choices = [
+                    f"{p['name']} ({p['track_count']} tracks)"
+                    for p in all_pls
+                ]
+                import questionary
+                from syncer.ui.cli import custom_style
+                chosen = questionary.select(
+                    "Select playlist to play:",
+                    choices=choices + ["🔙 Back to Menu"],
+                    style=custom_style
+                ).ask()
+
+                if not chosen or chosen == "🔙 Back to Menu":
+                    continue
+
+                chosen_idx = choices.index(chosen)
+                selected_pl = all_pls[chosen_idx]
+                tracks = pl_mgr.get_tracks(selected_pl["folder"])
+                if not tracks:
+                    console.print(f"[yellow]⚠️ No audio files found in '{selected_pl['name']}'.[/yellow]")
+                    continue
+
+                # Launch Terminal Mini-Player
+                player = TerminalPlayer(tracks)
+                player.run()
+
+            # 3. Manage Playlists & Library
             elif action == "manage_playlists":
+                pl_mgr = PlaylistManager(config_mgr)
                 selected_key = ui.select_saved_playlist(targets, active_key)
                 if not selected_key or selected_key == "__back__":
                     continue
 
-                if selected_key == "__add_new__":
+                if selected_key == "__create_custom__":
+                    custom_name = ui.ask_custom_playlist_name()
+                    pl_info = pl_mgr.create_custom_playlist(custom_name)
+                    console.print(f"[bold green]✔ Created custom playlist '{custom_name}' in {pl_info['folder']}[/bold green]\n")
+
+                elif selected_key == "__add_new__":
                     new_url = ui.ask_url()
                     if not new_url:
                         continue
@@ -348,6 +397,41 @@ def main():
                     config_mgr.set("active_target", key)
                     config_mgr.save()
                     console.print(f"[green]✔ Added & set active: {target_name}[/green]\n")
+
+                elif selected_key == "__manage_songs__":
+                    all_pls = pl_mgr.list_playlists()
+                    pl_choices = [p["name"] for p in all_pls]
+                    import questionary
+                    from syncer.ui.cli import custom_style
+                    pick_pl = questionary.select(
+                        "Which playlist would you like to inspect?",
+                        choices=pl_choices + ["🔙 Back"],
+                        style=custom_style
+                    ).ask()
+
+                    if not pick_pl or pick_pl == "🔙 Back":
+                        continue
+
+                    pl_obj = next(p for p in all_pls if p["name"] == pick_pl)
+                    tracks = pl_mgr.get_tracks(pl_obj["folder"])
+                    t_idx = ui.select_track_from_playlist(tracks, pl_obj["name"])
+                    if t_idx is None or t_idx == "__back__":
+                        continue
+
+                    chosen_track = tracks[t_idx]
+                    t_action = ui.ask_track_action(chosen_track.display_name)
+                    if t_action == "play":
+                        player = TerminalPlayer(tracks, initial_index=t_idx)
+                        player.run()
+                    elif t_action == "delete":
+                        confirm_del = questionary.confirm(
+                            f"Are you sure you want to permanently delete '{chosen_track.filename}'?",
+                            default=False,
+                            style=custom_style
+                        ).ask()
+                        if confirm_del:
+                            pl_mgr.remove_track(pl_obj["folder"], chosen_track)
+                            console.print(f"[bold green]✔ Successfully deleted '{chosen_track.filename}'[/bold green]\n")
 
                 elif selected_key == "__delete__":
                     del_key = ui.select_target_to_delete(targets)

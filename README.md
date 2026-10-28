@@ -1,54 +1,110 @@
 # ChinTunes 🎵
 
-A fast, interactive music downloader and playlist syncer for **Windows, macOS, and Linux**.
-
-Download songs and playlists with 320kbps CD masters, timed synchronized lyrics, and square album covers.
+> **The Ultimate High-Fidelity Music Downloader, Playlist Syncer & Terminal Mini-Player.**  
+> Seamless, zero-configuration setup for **macOS, Linux, and Windows** running in a 100% isolated sandbox.
 
 ---
 
-## ⚡ 1-Click Install
+## ⚡ 1-Click Automated Install
 
-### On macOS & Linux:
+ChinTunes sets up its own isolated environment with zero pollution to your global system Python.
+
+### macOS & Linux:
 ```bash
 ./install.sh
 ```
 *(or run `python3 install.py`)*
 
-### On Windows:
+### Windows:
 Double-click `install.bat`  
 *(or run `python install.py` in PowerShell / Command Prompt)*
 
-> **What the installer does automatically:**  
-> 1. **System Check**: Analyzes your Python version and checks for FFmpeg. If missing, it asks for permission and automatically installs them for you (via Homebrew on Mac, Winget/Chocolatey on Windows, or apt/dnf/pacman on Linux).  
-> 2. **Installs Packages**: Installs all required software packages.  
-> 3. **Configures PATH**: Adds the `chintunes` command to your system environment PATH permanently so you can run it from anywhere.
+> **What the installer does automatically:**
+> 1. **System Pre-Flight**: Checks Python version and optionally detects FFmpeg.
+> 2. **Isolated Environment (`~/.chintunes/env`)**: Creates a private virtual environment and installs all dependencies with 0 global footprint.
+> 3. **Global Command Registration**: Adds `chintunes` and `chintune` to your PATH so they can be launched anywhere.
 
 ---
 
-## 🚀 How to Use
+## 🚀 How to Launch
 
 Open **any terminal** and type:
-
 ```bash
 chintunes
 ```
+*(or simply `chintune`)*
 
-Navigate the interactive menu using your **arrow keys** and press **Enter** to choose.
+Use your **arrow keys** to navigate the menu and press **Enter** to select.
 
 ---
 
-## ✨ Features
+## 🎛️ Terminal Mini-Player & Live Karaoke
 
-- **Universal Links**: Paste any link from YouTube, YouTube Music, JioSaavn, Spotify, SoundCloud, or Gaana.
-- **Studio 320kbps Audio**: Automatic high-quality master matching from JioSaavn.
-- **Fast & Light**: Streams audio directly without burning CPU or slowing down your computer.
-- **Embedded Lyrics**: Automatically finds and embeds timed lyrics (`SYLT` and `USLT` tags).
-- **Square Artwork**: Auto-crops video thumbnails into clean 1:1 album covers.
-- **Clean File Names**: Saved neatly as `Song Title - Artist - [ID].mp3` (no ugly tags or channel noise).
-- **Offline Repair**: Backfill missing lyrics and covers on your existing music library anytime.
+Play any downloaded song or playlist directly inside your terminal with real-time scrolling lyrics:
+
+```text
+╭──────────────────────── ChinTunes Terminal Player 🎵 ────────────────────────╮
+│ AGAR TUM SAATH HO — Arijit Singh                                             │
+│ Track 1 of 203 • M4A • 13.26 MB                                              │
+│                                                                              │
+│ PLAYING ▶  00:42 ━━━━━━━━━━━─────────────────── 05:41  |  🔊 80%              │
+│                                                                              │
+│ ── Karaoke Synced Lyrics ─────────────────────────────────────────────────── │
+│   Pal bhar thahar jaao                                                       │
+│   Dil ye sambhal jaaye                                                       │
+│   ♫  Agar tum saath ho  ♪                                                    │
+│   Har gham phisal jaaye                                                      │
+│ ──────────────────────────────────────────────────────────────────────────── │
+│ Controls: [Space] Pause/Play  [←/→] Peek ±5s  [↑/↓] Volume  [N/P] Next/Prev  │
+╰──────────────────────────────────────────────────────────────────────────────╯
+```
+
+### Keyboard Shortcuts:
+| Key | Action |
+| :--- | :--- |
+| **`[Space]`** | Pause / Resume playback |
+| **`[→]` / `[Right Arrow]`** | Peek / Seek forward **+5 seconds** |
+| **`[←]` / `[Left Arrow]`** | Peek / Seek backward **-5 seconds** |
+| **`[↑]` / `[+ / =]`** | Volume Up (+5%) |
+| **`[↓]` / `[- / _]`** | Volume Down (-5%) |
+| **`[N]`** | Skip to **Next Track** |
+| **`[P]`** | Jump to **Previous Track** (or replay from start) |
+| **`[Q]` / `[Esc]`** | Stop playback and return cleanly to menu |
+
+---
+
+## 📑 Feature Highlights
+
+### 1. 🎵 Studio 320kbps CD Masters
+- Automatically matches song metadata against **JioSaavn CD masters** for authentic 320kbps audio.
+- Direct high-speed CDN audio streaming with pure Python (`urllib`), resulting in near-0% CPU load and maximum download speed.
+
+### 2. 🎤 Real-Time Synced Lyrics & Album Covers
+- Fetches synchronized timestamped lyrics (`.lrc` / `SYLT`) from **LRCLIB** and **NetEase**.
+- Auto-crops video thumbnails into clean **1:1 square album covers** using pure Python Pillow without needing external tools.
+- Embeds complete ID3v2.3, MP4 (`mutagen.mp4`), and FLAC metadata directly into files.
+
+### 3. 📂 Complete Playlist & Track Manager
+- **✨ Custom Playlists**: Create new local playlists (e.g. *"Gym Hits"*, *"Roadtrip"*) without requiring a remote URL. Auto-generates matching standard `.m3u8` playlists for phone, car, and VLC compatibility.
+- **🎵 Manage Songs**: Inspect all songs in a playlist with file sizes and lyrics status. Play individual tracks or delete tracks and their sync history with one click.
+- **⚡ 1-Click Sync**: Keeps your offline library perfectly synchronized with remote YouTube / Spotify playlists, automatically skipping already-downloaded songs.
+
+### 4. 🛠️ Library Tag & Cover Repair
+- Point ChinTunes to any existing folder of music to backfill missing synchronized lyrics and 1:1 album covers offline.
+
+---
+
+## 🗑️ 1-Click Complete Uninstall
+
+To completely purge ChinTunes, its isolated virtual environment, global launchers, PATH entries, and optionally FFmpeg:
+
+- **macOS & Linux**: Run `./uninstall.sh` (or `python3 uninstall.py`)
+- **Windows**: Double-click `uninstall.bat` (or `python uninstall.py`)
+
+Leaves **zero residual files or broken packages** on your machine.
 
 ---
 
 ## 📄 License
 
-MIT
+MIT License. Free and open source for personal music enjoyment.

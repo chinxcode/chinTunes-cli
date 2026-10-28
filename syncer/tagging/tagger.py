@@ -105,6 +105,13 @@ class MetadataTagger:
                 audio["trkn"] = [(int(track.playlist_index), 0)]
             if lyrics and (lyrics.plain or lyrics.synced):
                 audio["\xa9lyr"] = [lyrics.plain or lyrics.synced]
+                if lyrics.synced:
+                    try:
+                        lrc_path = os.path.splitext(file_path)[0] + ".lrc"
+                        with open(lrc_path, "w", encoding="utf-8") as lf:
+                            lf.write(lyrics.synced)
+                    except Exception:
+                        pass
             if cover_bytes:
                 audio["covr"] = [MP4Cover(cover_bytes, imageformat=MP4Cover.FORMAT_JPEG)]
             audio.save()
