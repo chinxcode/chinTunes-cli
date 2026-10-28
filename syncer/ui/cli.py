@@ -78,7 +78,11 @@ class InteractiveCLI:
                 value="manage_playlists"
             ),
             Choice(
-                title="🛠️ Fix Missing Lyrics & Artwork",
+                title="🔍 Match & Fix Local Music Folder (Metadata, Covers, Synced Lyrics)",
+                value="match_local_folder"
+            ),
+            Choice(
+                title="🛠️ Fix Missing Lyrics & Artwork (Current Playlist)",
                 value="repair_library"
             ),
             Choice(

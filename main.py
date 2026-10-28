@@ -115,6 +115,153 @@ def run_library_repair(coordinator: SyncCoordinator, download_dir: str):
     console.print("\n[bold green]✔ Library Backfill complete![/bold green]\n")
 
 
+def run_local_library_matcher(ui: InteractiveCLI, config_mgr: ConfigManager):
+    """Interactive Local MP3 Library Matcher & Tagger.
+    
+    Scans any messy local music directory, cleans dirty filenames,
+    queries iTunes and JioSaavn for studio-master tags and 1:1 square artwork,
+    fetches synced lyrics (.lrc), and optionally renames files cleanly.
+    """
+    import questionary
+    from rich.table import Table
+    from syncer.ui.cli import custom_style
+    from syncer.core.library_matcher import LibraryMatcher
+
+    console.print(
+        Panel.fit(
+            "[bold cyan]🔍 Local MP3 & Audio Library Matcher[/bold cyan]\n"
+            "[dim]Fix messy filenames, resolve misspelled artists/titles, embed hi-res square artwork & synced lyrics.[/dim]",
+            border_style="cyan"
+        )
+    )
+
+    folder = questionary.text(
+        "Enter path to your messy music folder:",
+        default="./Playlists",
+        style=custom_style
+    ).ask()
+
+    if not folder:
+        return
+
+    folder = os.path.expanduser(folder.strip())
+    if not os.path.isdir(folder):
+        console.print(f"[bold red]❌ Directory '{folder}' does not exist.[/bold red]\n")
+        return
+
+    matcher = LibraryMatcher()
+    audio_files = []
+    for root, _, files in os.walk(folder):
+        for f in files:
+            if f.lower().endswith(matcher.SUPPORTED_EXTENSIONS):
+                audio_files.append(os.path.join(root, f))
+
+    if not audio_files:
+        console.print(f"[yellow]⚠️ No supported audio files found in '{folder}'.[/yellow]\n")
+        return
+
+    console.print(f"\nFound [bold cyan]{len(audio_files)}[/bold cyan] audio file(s). Analyzing library against iTunes & JioSaavn...\n")
+
+    matches = []
+    with Progress(
+        SpinnerColumn(),
+        TextColumn("[progress.description]{task.description}"),
+        BarColumn(),
+        TextColumn("[progress.percentage]{task.percentage:>3.0f}%"),
+        TimeElapsedColumn(),
+        console=console
+    ) as progress:
+        scan_task = progress.add_task("[cyan]Scanning & matching tracks...", total=len(audio_files))
+        for fpath in audio_files:
+            m = matcher.match_track(fpath)
+            matches.append(m)
+            progress.advance(scan_task)
+
+    # Display Review Table
+    table = Table(
+        title="Proposed Library Matches & Metadata Fixes",
+        border_style="bright_blue",
+        header_style="bold cyan",
+        show_lines=True
+    )
+    table.add_column("#", justify="right", style="dim", width=4)
+    table.add_column("Original Filename", style="yellow", max_width=32, overflow="ellipsis")
+    table.add_column("Clean Title", style="bold green", max_width=28, overflow="ellipsis")
+    table.add_column("Clean Artist", style="magenta", max_width=24, overflow="ellipsis")
+    table.add_column("Cover Art", justify="center", width=10)
+    table.add_column("Confidence", justify="right", width=12)
+
+    for idx, m in enumerate(matches, 1):
+        art_status = "[green]✔ Hi-Res[/green]" if m.artwork_url else "[dim]None[/dim]"
+        conf_str = f"[green]{int(m.confidence * 100)}%[/green]" if m.confidence >= 0.8 else f"[yellow]{int(m.confidence * 100)}%[/yellow]"
+        table.add_row(
+            str(idx),
+            m.filename,
+            m.matched_title,
+            m.matched_artist or "[dim]Unknown[/dim]",
+            art_status,
+            conf_str
+        )
+
+    console.print(table)
+    console.print("")
+
+    # Interactive Options
+    confirm_apply = questionary.confirm(
+        f"Apply clean metadata, square artwork & embed lyrics to {len(matches)} track(s)?",
+        default=True,
+        style=custom_style
+    ).ask()
+
+    if not confirm_apply:
+        console.print("[yellow]Matching cancelled. No changes were made.[/yellow]\n")
+        return
+
+    save_lrc = questionary.confirm(
+        "Save synchronized .lrc lyrics files alongside each track?",
+        default=True,
+        style=custom_style
+    ).ask()
+
+    rename_files = questionary.confirm(
+        "Also rename audio files cleanly into 'Title - Artist.ext' format?",
+        default=False,
+        style=custom_style
+    ).ask()
+
+    console.print(f"\n[bold cyan]🚀 Processing and embedding tags for {len(matches)} track(s)...[/bold cyan]\n")
+
+    repaired_count = 0
+    with Progress(
+        SpinnerColumn(),
+        TextColumn("[progress.description]{task.description}"),
+        BarColumn(),
+        TextColumn("[progress.percentage]{task.percentage:>3.0f}%"),
+        TimeElapsedColumn(),
+        console=console
+    ) as progress:
+        repair_task = progress.add_task("[green]Embedding artwork & lyrics...", total=len(matches))
+        for m in matches:
+            success = matcher.process_and_repair_track(
+                match=m,
+                save_lrc=save_lrc,
+                rename_file=rename_files
+            )
+            if success:
+                repaired_count += 1
+            progress.advance(repair_task)
+
+    console.print(
+        Panel.fit(
+            f"[bold green]✨ Library Matcher Complete![/bold green]\n"
+            f"Successfully updated [bold cyan]{repaired_count}/{len(matches)}[/bold cyan] tracks in '{folder}'.\n"
+            f"[dim]Embedded CD-quality tags, 1:1 square artwork, and synced karaoke lyrics.[/dim]",
+            border_style="green"
+        )
+    )
+
+
+
 def execute_sync_pipeline(coordinator: SyncCoordinator, collection, download_dir: str, config_mgr: ConfigManager) -> bool:
     """
     Executes concurrent synchronization.
@@ -448,7 +595,11 @@ def main():
                     config_mgr.save()
                     console.print(f"[green]✔ Active target switched to: {targets[selected_key]['name']}[/green]\n")
 
-            # 3. Repair Existing Library
+            # 3. Match & Fix Local Music Folder (Metadata, Covers, Synced Lyrics)
+            elif action == "match_local_folder":
+                run_local_library_matcher(ui, config_mgr)
+
+            # 4. Repair Existing Library (Current Playlist)
             elif action == "repair_library":
                 active_info = config_mgr.active_target_info
                 default_path = active_info.get("folder", "./Playlists") if active_info else "./Playlists"

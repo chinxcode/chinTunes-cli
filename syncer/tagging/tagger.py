@@ -78,13 +78,17 @@ class MetadataTagger:
         lyrics: Optional[LyricsData] = None,
         cover_bytes: Optional[bytes] = None
     ):
-        ext = audio_format.lower()
-        if ext == "mp3":
+        ext = audio_format.lower().lstrip(".")
+        if ext in ("mp3", "mp2"):
             cls._embed_mp3(file_path, track, lyrics, cover_bytes)
-        elif ext in ("m4a", "mp4", "aac"):
+        elif ext in ("m4a", "mp4", "aac", "alac", "m4b", "m4v"):
             cls._embed_m4a(file_path, track, lyrics, cover_bytes)
         elif ext == "flac":
             cls._embed_flac(file_path, track, lyrics, cover_bytes)
+        elif ext in ("ogg", "oga", "opus"):
+            cls._embed_ogg_opus(file_path, track, lyrics, cover_bytes)
+        elif ext in ("wav", "wave", "aif", "aiff"):
+            cls._embed_wave_aiff(file_path, track, lyrics, cover_bytes)
 
     @classmethod
     def _embed_m4a(
@@ -212,3 +216,87 @@ class MetadataTagger:
             audio.save()
         except Exception as e:
             print(f"Warning: could not write FLAC tags to {file_path}: {e}")
+
+    @classmethod
+    def _embed_ogg_opus(
+        cls,
+        file_path: str,
+        track: TrackMetadata,
+        lyrics: Optional[LyricsData],
+        cover_bytes: Optional[bytes]
+    ):
+        try:
+            import base64
+            from mutagen.oggvorbis import OggVorbis
+            from mutagen.oggopus import OggOpus
+            from mutagen.flac import Picture
+
+            ext = os.path.splitext(file_path)[-1].lower()
+            audio = OggOpus(file_path) if ext == ".opus" else OggVorbis(file_path)
+
+            audio["title"] = track.title
+            audio["artist"] = track.artist
+            audio["album"] = track.album
+            if track.year:
+                audio["date"] = str(track.year)
+            if track.playlist_index:
+                audio["tracknumber"] = str(track.playlist_index)
+            if lyrics and (lyrics.plain or lyrics.synced):
+                audio["lyrics"] = lyrics.plain or lyrics.synced
+
+            if cover_bytes:
+                pic = Picture()
+                pic.type = 3
+                pic.mime = "image/jpeg"
+                pic.desc = "Cover"
+                pic.data = cover_bytes
+                encoded_data = base64.b64encode(pic.write()).decode("ascii")
+                audio["metadata_block_picture"] = [encoded_data]
+
+            audio.save()
+        except Exception as e:
+            print(f"Warning: could not write Ogg/Opus tags to {file_path}: {e}")
+
+    @classmethod
+    def _embed_wave_aiff(
+        cls,
+        file_path: str,
+        track: TrackMetadata,
+        lyrics: Optional[LyricsData],
+        cover_bytes: Optional[bytes]
+    ):
+        try:
+            from mutagen.wave import WAVE
+            from mutagen.aiff import AIFF
+
+            ext = os.path.splitext(file_path)[-1].lower()
+            audio = AIFF(file_path) if ext in (".aif", ".aiff") else WAVE(file_path)
+
+            if audio.tags is None:
+                audio.add_tags()
+            else:
+                audio.tags.delall("TIT2")
+                audio.tags.delall("TPE1")
+                audio.tags.delall("TALB")
+                audio.tags.delall("USLT")
+
+            audio.tags.add(TIT2(encoding=Encoding.UTF8, text=track.title))
+            audio.tags.add(TPE1(encoding=Encoding.UTF8, text=track.artist))
+            audio.tags.add(TALB(encoding=Encoding.UTF8, text=track.album))
+            if track.year:
+                audio.tags.add(TYER(encoding=Encoding.UTF8, text=str(track.year)))
+            if lyrics and (lyrics.plain or lyrics.synced):
+                audio.tags.add(USLT(encoding=Encoding.UTF8, lang="eng", desc="Lyrics", text=lyrics.plain or lyrics.synced))
+            if cover_bytes:
+                audio.tags.delall("APIC")
+                audio.tags.add(APIC(
+                    encoding=Encoding.LATIN1,
+                    mime="image/jpeg",
+                    type=3,
+                    desc="Cover",
+                    data=cover_bytes
+                ))
+            audio.save()
+        except Exception as e:
+            print(f"Warning: could not write WAVE/AIFF ID3 tags to {file_path}: {e}")
+

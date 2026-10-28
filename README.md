@@ -89,7 +89,18 @@ Play any downloaded song or playlist directly inside your terminal with real-tim
 - **🎵 Manage Songs**: Inspect all songs in a playlist with file sizes and lyrics status. Play individual tracks or delete tracks and their sync history with one click.
 - **⚡ 1-Click Sync**: Keeps your offline library perfectly synchronized with remote YouTube / Spotify playlists, automatically skipping already-downloaded songs.
 
-### 4. 🛠️ Library Tag & Cover Repair
+### 4. 🔍 Multi-Format Audio Library Matcher (MP3, M4A, FLAC, OGG, OPUS, WAV, AAC, ALAC, WEBM)
+- **Multi-Format Support**: Works seamlessly across `.mp3`, `.m4a`, `.mp4`, `.flac`, `.aac`, `.ogg`, `.opus`, `.wav`, `.wave`, `.aiff`, `.alac`, and `.webm`.
+- **Tri-Source Metadata Cascade**:
+  1. **Apple iTunes CD Master API**: Queries CD-release masters and fetches up to **1400x1400** ultra-high-definition artwork.
+  2. **JioSaavn Studio API**: Secondary resolver for Indian, Bollywood, and regional tracks with studio 500x500 covers.
+  3. **YouTube & YouTube Music**: Tertiary fallback via `yt-dlp` to identify rare tracks, remixes, covers, and unreleased singles, retrieving `maxresdefault` thumbnail artwork.
+- **Cleans & Sanitizes**: Automatically strips pirate site domains, bitrates (`320kbps`), web URLs, and platform junk tokens.
+- **1:1 Square Hi-Res Artwork**: Center-crops artwork to square JPEG using Pillow (`PIL`) without requiring external binaries.
+- **Synced Lyrics Backfill**: Automatically queries and embeds synced karaoke lyrics directly into audio containers and writes matching `.lrc` companion files.
+- **Optional Clean Rename**: Automatically renames files into standardized `Title - Artist.ext` format upon confirmation.
+
+### 5. 🛠️ Library Tag & Cover Repair
 - Point ChinTunes to any existing folder of music to backfill missing synchronized lyrics and 1:1 album covers offline.
 
 ---
